@@ -1,2 +1,5 @@
 node_modules/
 .DS_Store
+
+# Compiled macOS app bundle — build locally with ./build-app.sh
+YT Transcript.app/

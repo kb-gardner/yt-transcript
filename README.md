@@ -1,49 +1,73 @@
 # yt-transcript
 
-A tiny local tool for grabbing a YouTube video's transcript. Paste a URL, get a
-plain-text transcript file on your Desktop. Zero dependencies — just Node.
+A tiny local tool for grabbing a YouTube video's transcript. Paste a URL, get the
+transcript — as a Desktop file, streamed to stdout, or as JSON. Zero dependencies,
+just Node. AI-agent friendly (see [AGENTS.md](AGENTS.md)).
+
+Repo: `github.com/kb-gardner/yt-transcript` (private).
 
 ## Requirements
-- macOS with Node 18+ (uses the built-in `fetch`). Built/tested on Node 26.
-- No npm install needed. No API key, no login.
+- Node 18+ (uses the built-in `fetch`). Built/tested on Node 26. macOS or Linux.
+- No npm install needed. No API key, no login. Just clone and run:
+  ```bash
+  git clone https://github.com/kb-gardner/yt-transcript.git && cd yt-transcript
+  node grab.mjs --help
+  ```
 
 ## CLI usage
 ```bash
+# Save "<title> - transcript.txt" to ~/Desktop (default):
 node grab.mjs "https://www.youtube.com/watch?v=VIDEO_ID"
-# or via npm:
-npm run grab -- "https://youtu.be/VIDEO_ID"
+npm run grab -- "https://youtu.be/VIDEO_ID"      # same, via npm
+
+# Print the transcript to stdout, no file:
+node grab.mjs --stdout "https://youtu.be/VIDEO_ID"
+
+# Structured JSON to stdout, no file:
+node grab.mjs --json "https://youtu.be/VIDEO_ID"
+
+# Write to an explicit path or into a directory:
+node grab.mjs --out ./notes/talk.txt "https://youtu.be/VIDEO_ID"
+node grab.mjs --out ./notes/        "https://youtu.be/VIDEO_ID"   # auto filename
+
+node grab.mjs --help                              # full flag reference
 ```
+
+**Flags:** `--stdout` (print text, no file), `--json` (`{ videoId, title, channel,
+url, captionKind, grabbedAt, transcript }`, no file), `--out <path>` (explicit file
+or directory), `--help`. `--stdout`/`--json` can each combine with `--out` to also
+save (the "Saved:" line then goes to stderr, keeping stdout clean). `--stdout` and
+`--json` cannot be combined.
 
 Accepts every common URL shape: `youtube.com/watch?v=…`, `youtu.be/…`,
 `youtube.com/shorts/…`, `/embed/…`, `/live/…`, URLs with extra query params, and
 bare 11-character video IDs.
 
-On success it prints:
-```
-Saved: /Users/you/Desktop/<video title> - transcript.txt
-```
-The file has a short header (title, channel, URL, caption type, date) followed by
-the transcript flattened into readable paragraphs — no timestamps. Manual English
+Default mode prints `Saved: /Users/you/Desktop/<video title> - transcript.txt`. The
+file has a short header (title, channel, URL, caption type, date) followed by the
+transcript flattened into readable paragraphs — no timestamps. Manual English
 captions are preferred, then auto-generated English, then anything available. A
 video with no captions exits with a clear `Error: no captions available for this
-video`.
+video` (exit 1).
 
-## The Spotlight app
-`YT Transcript.app` (in this folder) is a small AppleScript wrapper:
-
+## The Spotlight app (optional, macOS-only, local)
+`YT Transcript.app` is a small AppleScript wrapper for launching the tool from
+Spotlight. It's **not** in the repo (a compiled macOS bundle isn't worth
+versioning) — build it locally from the committed source:
+```bash
+./build-app.sh        # runs osacompile, produces "YT Transcript.app" in this folder
+```
+Then:
 1. Launch it — from **Spotlight** (⌘-Space → type "YT Transcript"), or by
    double-clicking it. To make it appear in Spotlight everywhere, drag it into
-   **/Applications** (optional; Spotlight also indexes it here).
+   **/Applications** (optional).
 2. A dialog asks for a URL. Paste and click **Grab**.
 3. A macOS notification shows the saved filename (or the error) when it finishes.
 
 The app calls the CLI using absolute paths baked in at build time
 (`/opt/homebrew/bin/node` and this folder's `grab.mjs`). If you move the project
-or upgrade to a different node install, rebuild it:
-```bash
-# edit the two paths at the top of YT Transcript.applescript if needed, then:
-osacompile -o "YT Transcript.app" "YT Transcript.applescript"
-```
+or upgrade to a different node install, edit the two `set nodeBin`/`set grabScript`
+lines at the top of `YT Transcript.applescript`, then rerun `./build-app.sh`.
 
 ### First launch (Gatekeeper)
 Because the app isn't notarized, the first time you open it macOS may block it.

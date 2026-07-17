@@ -1,41 +1,13 @@
 #!/usr/bin/env node
-// Offline self-check for URL -> video id parsing (no network). Run: node url.test.mjs
-// grab.mjs's extractVideoId is duplicated here in spirit via import of the module's
-// behavior — kept in sync manually since grab.mjs doesn't export (tiny tool).
+// Offline self-check for URL parsing + arg parsing (no network).
+// Run: node url.test.mjs
 import assert from "node:assert/strict";
-
-// Mirror of grab.mjs::extractVideoId (keep in sync if that changes).
-function extractVideoId(input) {
-  if (!input) return null;
-  if (/^[A-Za-z0-9_-]{11}$/.test(input)) return input;
-  let u;
-  try {
-    u = new URL(input.trim());
-  } catch {
-    return null;
-  }
-  const host = u.hostname.replace(/^www\./, "");
-  if (host === "youtu.be") {
-    const id = u.pathname.split("/").filter(Boolean)[0];
-    return id && /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
-  }
-  if (host.endsWith("youtube.com") || host.endsWith("youtube-nocookie.com")) {
-    const v = u.searchParams.get("v");
-    if (v && /^[A-Za-z0-9_-]{11}$/.test(v)) return v;
-    const parts = u.pathname.split("/").filter(Boolean);
-    const idx = parts.findIndex((p) =>
-      ["shorts", "embed", "live", "v"].includes(p),
-    );
-    if (idx !== -1 && parts[idx + 1]) {
-      const id = parts[idx + 1];
-      return /^[A-Za-z0-9_-]{11}$/.test(id) ? id : null;
-    }
-  }
-  return null;
-}
+import { extractVideoId, parseArgs } from "./grab.mjs";
 
 const ID = "dQw4w9WgXcQ";
-const cases = [
+
+// --- URL -> video id ---
+const urlCases = [
   ["https://www.youtube.com/watch?v=dQw4w9WgXcQ", ID],
   ["https://youtube.com/watch?v=dQw4w9WgXcQ", ID],
   ["https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDxyz&index=2", ID],
@@ -50,10 +22,42 @@ const cases = [
   ["not-a-url", null],
   ["", null],
 ];
-
 let pass = 0;
-for (const [input, expected] of cases) {
+for (const [input, expected] of urlCases) {
   assert.equal(extractVideoId(input), expected, `parse failed for: ${input}`);
   pass++;
 }
-console.log(`url.test.mjs: ${pass}/${cases.length} URL-shape checks passed`);
+
+// --- arg parsing ---
+const U = "https://youtu.be/dQw4w9WgXcQ";
+assert.deepEqual(parseArgs([U]), {
+  help: false,
+  stdout: false,
+  json: false,
+  out: null,
+  url: U,
+});
+assert.equal(parseArgs(["--stdout", U]).stdout, true);
+assert.equal(parseArgs(["--json", U]).json, true);
+assert.equal(parseArgs(["--out", "/tmp/x.txt", U]).out, "/tmp/x.txt");
+assert.equal(parseArgs([`--out=/tmp/y.txt`, U]).out, "/tmp/y.txt");
+assert.equal(parseArgs([U, "--json"]).json, true); // order independent
+assert.equal(parseArgs(["--help"]).help, true); // help without url ok
+pass += 7;
+
+// --- arg parsing errors ---
+const errCases = [
+  [[], "no url"],
+  [["--stdout", "--json", U], "stdout+json combined"],
+  [["--out"], "out missing path"],
+  [["--bogus", U], "unknown flag"],
+  [[U, "extra", "arg"], "extra positional"],
+];
+for (const [argv, label] of errCases) {
+  assert.throws(() => parseArgs(argv), /.*/, `should have thrown: ${label}`);
+  pass++;
+}
+
+console.log(
+  `url.test.mjs: ${pass} checks passed (${urlCases.length} URL, 7 arg, ${errCases.length} arg-error)`,
+);
