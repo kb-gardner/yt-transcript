@@ -4,15 +4,34 @@ A tiny local tool for grabbing a YouTube video's transcript. Paste a URL, get th
 transcript — as a Desktop file, streamed to stdout, or as JSON. Zero dependencies,
 just Node. AI-agent friendly (see [AGENTS.md](AGENTS.md)).
 
-Repo: `github.com/kb-gardner/yt-transcript` (private).
+## Install
 
-## Requirements
-- Node 18+ (uses the built-in `fetch`). Built/tested on Node 26. macOS or Linux.
-- No npm install needed. No API key, no login. Just clone and run:
-  ```bash
-  git clone https://github.com/kb-gardner/yt-transcript.git && cd yt-transcript
-  node grab.mjs --help
-  ```
+One command:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/kb-gardner/yt-transcript/main/install.sh | bash
+```
+
+That installs the CLI to `~/.yt-transcript`, puts a `yt-transcript` command on your
+PATH, and on macOS builds a **"YT Transcript"** app you can launch from Spotlight.
+Re-running the command updates in place. No sudo, no Homebrew — it won't install
+Node for you (you need Node 18+ first, from [nodejs.org](https://nodejs.org) or
+`brew install node`).
+
+**No terminal?** On the GitHub page, click the green **Code** button → **Download
+ZIP**, unzip it, and run `node grab.mjs --help` inside the folder (Node 18+ still
+required). On macOS you can then double-click `build-app.sh` after `chmod +x`, or
+just use the CLI.
+
+**Requirements:** Node 18+ (uses the built-in `fetch`; tested on Node 26). macOS or
+Linux. No API key, no login.
+
+## Uninstall
+```bash
+rm -rf ~/.yt-transcript ~/.local/bin/yt-transcript "$HOME/Applications/YT Transcript.app"
+```
+(Then remove the `export PATH=...` line from your shell rc if the installer added
+one — it never edits your rc, so there's usually nothing to undo.)
 
 ## CLI usage
 ```bash
@@ -50,24 +69,20 @@ captions are preferred, then auto-generated English, then anything available. A
 video with no captions exits with a clear `Error: no captions available for this
 video` (exit 1).
 
-## The Spotlight app (optional, macOS-only, local)
-`YT Transcript.app` is a small AppleScript wrapper for launching the tool from
-Spotlight. It's **not** in the repo (a compiled macOS bundle isn't worth
-versioning) — build it locally from the committed source:
-```bash
-./build-app.sh        # runs osacompile, produces "YT Transcript.app" in this folder
-```
-Then:
-1. Launch it — from **Spotlight** (⌘-Space → type "YT Transcript"), or by
-   double-clicking it. To make it appear in Spotlight everywhere, drag it into
-   **/Applications** (optional).
+## The Spotlight app (macOS)
+The installer already built **"YT Transcript.app"** into `~/Applications` (with your
+machine's node + script paths baked in), so it's ready in Spotlight:
+
+1. Launch it — press **⌘-Space** and type "YT Transcript" (or double-click it in
+   `~/Applications`).
 2. A dialog asks for a URL. Paste and click **Grab**.
 3. A macOS notification shows the saved filename (or the error) when it finishes.
 
-The app calls the CLI using absolute paths baked in at build time
-(`/opt/homebrew/bin/node` and this folder's `grab.mjs`). If you move the project
-or upgrade to a different node install, edit the two `set nodeBin`/`set grabScript`
-lines at the top of `YT Transcript.applescript`, then rerun `./build-app.sh`.
+If you installed from a ZIP instead of the one-liner, build the app yourself from
+the repo folder with `./build-app.sh` (it runs `osacompile`; the compiled `.app`
+isn't versioned in git). To rebuild after moving node or the project, edit the two
+`set nodeBin`/`set grabScript` lines at the top of `YT Transcript.applescript`, then
+rerun `./build-app.sh`.
 
 ### First launch (Gatekeeper)
 Because the app isn't notarized, the first time you open it macOS may block it.

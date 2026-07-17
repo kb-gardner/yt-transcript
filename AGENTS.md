@@ -10,12 +10,22 @@ This file is the contract for AI agents. Read it before using the tool.
 - Network access to `youtube.com`.
 
 ## Setup from scratch
+
+**On an end-user machine** (installs a `yt-transcript` command + macOS Spotlight app):
+```bash
+curl -fsSL https://raw.githubusercontent.com/kb-gardner/yt-transcript/main/install.sh | bash
+```
+Installs to `~/.yt-transcript`, wrapper at `~/.local/bin/yt-transcript`. Idempotent.
+After install you can call `yt-transcript …` (if `~/.local/bin` is on PATH) or
+`node ~/.yt-transcript/grab.mjs …` directly.
+
+**As an agent working in a repo checkout** (no global install needed):
 ```bash
 git clone https://github.com/kb-gardner/yt-transcript.git
 cd yt-transcript
-node grab.mjs --help            # no build, no install needed
+node grab.mjs --help            # no build, no npm install
 ```
-If the repo is already present locally, the script is at:
+If this repo is already present locally, the script is at:
 `/Users/kyleg/dev/personal/yt-transcript/grab.mjs`
 
 ## Usage recipes

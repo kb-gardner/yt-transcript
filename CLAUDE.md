@@ -5,8 +5,17 @@ saved to the Desktop by default, or streamed to stdout / emitted as JSON for AI
 agents. Entry points: a Node CLI (`grab.mjs`) and an optional Spotlight-launchable
 AppleScript wrapper (`YT Transcript.app`).
 
-Repo: **`github.com/kb-gardner/yt-transcript`** (private). AI-agent contract lives
-in **`AGENTS.md`**; a local Claude Code skill points at this project (see below).
+Repo: **`github.com/kb-gardner/yt-transcript`** — **PUBLIC**, MIT licensed. AI-agent
+contract lives in **`AGENTS.md`**; a local Claude Code skill points at this project
+(see below).
+
+**One-command install** (`install.sh` at repo root):
+`curl -fsSL https://raw.githubusercontent.com/kb-gardner/yt-transcript/main/install.sh | bash`
+— installs to `~/.yt-transcript`, drops a `yt-transcript` wrapper in `~/.local/bin`,
+and on macOS osacompiles the Spotlight app into `~/Applications` with the installing
+machine's resolved node + script paths (parameterized from the `.applescript`).
+Idempotent, no sudo, never auto-installs Node. This is Kyle's own dev checkout at
+`~/dev/personal/yt-transcript`; the installer is for clean end-user machines.
 
 ## What it is
 - **`grab.mjs`** — the core. Plain Node ESM, **zero npm dependencies** (uses the
@@ -79,9 +88,11 @@ available. No captions at all → clean error "no captions available for this vi
 
 ## Files
 - `grab.mjs` — CLI / core logic (exports `parseArgs`, `extractVideoId` for tests)
+- `install.sh` — one-command installer (curl | bash); git-clone or tarball, builds app
+- `LICENSE` — MIT, © 2026 Kyle Gardner
 - `AGENTS.md` — AI-agent contract (setup, recipes, failure modes)
-- `YT Transcript.applescript` — Spotlight app source; `build-app.sh` compiles it
+- `YT Transcript.applescript` — Spotlight app source; `build-app.sh` / `install.sh` compile it
 - `url.test.mjs` — offline self-check (`node url.test.mjs`)
-- `README.md` — human usage + global-hotkey binding steps
+- `README.md` — human usage: install one-liner, Spotlight, hotkey, flags, uninstall
 - `package.json` — `npm run grab`, no dependencies
 - `YT Transcript.app/` — built app, **gitignored / local-only**
