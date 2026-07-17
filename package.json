@@ -1,0 +1,13 @@
+{
+  "name": "yt-transcript",
+  "version": "1.0.0",
+  "description": "Tiny local tool: YouTube URL -> transcript .txt on the Desktop. Zero dependencies.",
+  "type": "module",
+  "bin": {
+    "yt-transcript": "grab.mjs"
+  },
+  "scripts": {
+    "grab": "node grab.mjs"
+  },
+  "license": "ISC"
+}
