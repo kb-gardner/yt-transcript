@@ -45,8 +45,16 @@ try
 	set savedPath to theOutput
 	if theOutput starts with "Saved: " then set savedPath to text 8 thru -1 of theOutput
 
-	display notification (my lastPathComponent(savedPath)) ¬
-		with title "YT Transcript ✓" subtitle "Saved to Desktop"
+	set fileName to my lastPathComponent(savedPath)
+	-- Notification is a nice-to-have but unreliable for unsigned applets (macOS
+	-- silently drops it without granted permission), so the guaranteed success
+	-- feedback is this in-window confirmation that auto-dismisses after ~2s.
+	display notification fileName with title "YT Transcript ✓" subtitle "Saved to Desktop"
+	try
+		display dialog ("✓  Saved to Desktop" & return & return & fileName) ¬
+			with title "YT Transcript" buttons {"OK"} default button "OK" ¬
+			giving up after 2 with icon note
+	end try
 on error errMsg number errNum
 	if errNum is -128 then return -- user cancelled somewhere
 	-- errMsg carries grab.mjs's stderr (e.g. "Error: no captions available...").
