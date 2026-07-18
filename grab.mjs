@@ -87,6 +87,10 @@ const RATE_LIMIT_MSG =
   "bot\"). This usually clears within an hour — try again later. (Not a bug in " +
   "this tool.)";
 
+const AGE_RESTRICTED_MSG =
+  "This video is age-restricted; YouTube requires sign-in for it, which this " +
+  "tool doesn't do.";
+
 // Set from --json in main(); routes runtime failures to JSON-on-stdout for agents.
 let outputJsonErrors = false;
 
@@ -131,8 +135,17 @@ function die(msg, code = 1) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function isBotBlock(reason) {
-  return /not a bot|sign in to confirm|confirm you.?re not/i.test(reason || "");
+// Classify a non-OK playabilityStatus reason. Only the genuine anti-bot check
+// ("...confirm you're not a bot") counts as "bot"; age-gating ("...confirm your
+// age", "inappropriate for some users") is "age"; everything else is "other" and
+// gets surfaced verbatim. Exported for offline testing.
+export function classifyPlayability(reason) {
+  const r = reason || "";
+  if (/not a bot/i.test(r)) return "bot";
+  if (/confirm your age|age-?restricted|inappropriate for some users/i.test(r)) {
+    return "age";
+  }
+  return "other";
 }
 
 // ---- arg parsing (pure, unit-testable) ------------------------------------
@@ -371,8 +384,9 @@ function resolveOutPath(out, defaultBase) {
 async function grabTranscript(videoId) {
   let sawPlayableNoTracks = false; // a client played the video but had no captions
   let sawEmptyFeed = false; // captions existed but the feed came back empty
-  let botBlocked = false; // a client hit the "not a bot" wall
-  let lastReason = null; // last non-bot inaccessibility reason
+  let botBlocked = false; // a client hit the genuine "not a bot" wall
+  let ageRestricted = false; // a client reported age-gating
+  let lastReason = null; // last other (verbatim) inaccessibility reason
 
   for (let i = 0; i < CLIENTS.length; i++) {
     if (i > 0) await sleep(500); // brief spacing; keeps ≤3 player requests/grab
@@ -393,7 +407,9 @@ async function grabTranscript(videoId) {
         pr?.playabilityStatus?.errorScreen?.playerErrorMessageRenderer?.reason
           ?.simpleText ||
         status;
-      if (isBotBlock(reason)) botBlocked = true;
+      const kind = classifyPlayability(reason);
+      if (kind === "bot") botBlocked = true;
+      else if (kind === "age") ageRestricted = true;
       else lastReason = reason;
       continue;
     }
@@ -428,7 +444,11 @@ async function grabTranscript(videoId) {
   }
 
   // All clients exhausted — report the most informative cause.
+  // A playable client with no captions is definitive; age-gating is a real video
+  // property (surface it, not the transient bot message); bot/empty-feed are the
+  // transient throttle; anything else is surfaced verbatim.
   if (sawPlayableNoTracks) die("no captions available for this video");
+  if (ageRestricted) die(AGE_RESTRICTED_MSG);
   if (botBlocked || sawEmptyFeed) die(RATE_LIMIT_MSG);
   die(`Video is not accessible: ${lastReason || "unknown reason"}`);
 }

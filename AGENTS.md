@@ -87,13 +87,17 @@ you get *after* all clients were tried.
    already tried 3 clients. Wait (tens of minutes) and retry once later, or just relay this message
    to the user. Rapid retries prolong the block.
 
-3. **Video inaccessible** — `Video is not accessible: <reason>` (private, removed, age/region
-   restricted, etc.). Surface the reason; not retryable.
+3. **Age-restricted** — `This video is age-restricted; YouTube requires sign-in for it, which this
+   tool doesn't do.` Distinct from the rate-limit case (both once shared "Sign in to confirm…"
+   phrasing). Not retryable; tell the user.
 
-4. **Usage error** — `Error: <reason>` followed by the help text (bad flag, missing URL,
+4. **Video inaccessible** — `Video is not accessible: <reason>` — the actual YouTube reason verbatim
+   (private, removed, region-blocked, unavailable, etc.). Surface the reason; not retryable.
+
+5. **Usage error** — `Error: <reason>` followed by the help text (bad flag, missing URL,
    `--stdout` + `--json` together). These always go to stderr (not JSON). Fix the command and rerun.
 
-5. **Stale clients (rare, future)** — if grabs fail across many videos with empty feeds, YouTube
+6. **Stale clients (rare, future)** — if grabs fail across many videos with empty feeds, YouTube
    likely changed its API. Fix: bump the `clientVersion` (and matching `userAgent` version) of the
    entries in the `CLIENTS` array in `grab.mjs`, or append a new working client. See CLAUDE.md.
 

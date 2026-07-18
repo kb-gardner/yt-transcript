@@ -118,7 +118,11 @@ on promptCocoa(prefillText)
 
 	set resp to theAlert's runModal()
 	if resp is (current application's NSAlertFirstButtonReturn) then
-		return (textView's string() as text)
+		-- NOTE: 'string' is an AppleScript keyword; the bare 'textView's string()'
+		-- gets mis-parsed as an object specifier and fails to coerce, which used to
+		-- throw here and trigger the display-dialog fallback (double prompt). Escape
+		-- the selector with pipes so it's read as the -string method.
+		return ((textView's |string|()) as text)
 	end if
 	return missing value
 end promptCocoa

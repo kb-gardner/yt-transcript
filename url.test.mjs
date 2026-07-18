@@ -2,7 +2,7 @@
 // Offline self-check for URL parsing + arg parsing (no network).
 // Run: node url.test.mjs
 import assert from "node:assert/strict";
-import { extractVideoId, parseArgs, CLIENTS } from "./grab.mjs";
+import { extractVideoId, parseArgs, CLIENTS, classifyPlayability } from "./grab.mjs";
 
 const ID = "dQw4w9WgXcQ";
 
@@ -15,6 +15,26 @@ for (const c of CLIENTS) {
   assert.equal(typeof c.userAgent, "string", "client.userAgent present");
 }
 assert.equal(CLIENTS[0].name, "ANDROID_VR", "ANDROID_VR is tried first");
+
+// --- playability classifier: bot vs age vs other (must not conflate) ---
+const classifyCases = [
+  ["Sign in to confirm you’re not a bot", "bot"],
+  ["Sign in to confirm you're not a bot", "bot"],
+  ["Sign in to confirm your age", "age"],
+  ["This video may be inappropriate for some users.", "age"],
+  ["This video is age-restricted", "age"],
+  ["This video is private.", "other"],
+  ["This video is unavailable", "other"],
+  ["Video unavailable", "other"],
+  ["", "other"],
+];
+for (const [reason, expected] of classifyCases) {
+  assert.equal(
+    classifyPlayability(reason),
+    expected,
+    `classify mismatch for: ${reason}`,
+  );
+}
 
 // --- URL -> video id ---
 const urlCases = [
@@ -72,5 +92,5 @@ for (const [argv, label] of errCases) {
 }
 
 console.log(
-  `url.test.mjs: ${pass} checks passed (${urlCases.length} URL, 9 arg, ${errCases.length} arg-error, +${CLIENTS.length + 4} client-list)`,
+  `url.test.mjs: ${pass} checks passed (${urlCases.length} URL, 9 arg, ${errCases.length} arg-error, +${CLIENTS.length + 4} client-list, +${classifyCases.length} classifier)`,
 );
