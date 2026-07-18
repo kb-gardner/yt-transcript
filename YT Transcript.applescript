@@ -3,21 +3,34 @@
 -- runs the CLI with absolute paths, then reports the saved filename (or error)
 -- via a macOS notification.
 --
--- Paths are hardcoded to absolute locations resolved at build time:
+-- UX (round 4): opens frontmost and refocuses on Dock-icon click (activate);
+-- a wide, scrollable, multi-line input so long pasted URLs are fully visible
+-- (Cocoa NSAlert + NSTextView via AppleScriptObjC); and clipboard pre-fill when
+-- the clipboard already holds a YouTube URL.
+--
+-- Paths are hardcoded to absolute locations resolved at build time. The two lines
+-- below (set nodeBin / set grabScript) are placeholders that install.sh rewrites
+-- for each machine — keep them at column 0 starting with those exact words.
 --   node:   /opt/homebrew/bin/node   (from `which node`)
 --   script: /Users/kyleg/dev/personal/yt-transcript/grab.mjs
--- If either moves, rebuild the app (see README.md) so these stay correct.
+
+use framework "Foundation"
+use framework "AppKit"
+use scripting additions
 
 set nodeBin to "/opt/homebrew/bin/node"
 set grabScript to "/Users/kyleg/dev/personal/yt-transcript/grab.mjs"
 
--- Prompt for the URL.
-set dlg to display dialog "Paste a YouTube URL:" default answer "" ¬
-	with title "YT Transcript" buttons {"Cancel", "Grab"} default button "Grab" ¬
-	with icon note
-set theURL to text returned of dlg
+-- Open frontmost, and make Dock-icon clicks bring the dialog forward.
+tell me to activate
+current application's NSApplication's sharedApplication()'s activateIgnoringOtherApps:true
 
--- Trim leading/trailing whitespace.
+-- Pre-fill only if the clipboard looks like a YouTube URL (never show other text).
+set prefill to my clipboardIfYouTube()
+
+set theURL to my promptForURL(prefill)
+if theURL is missing value then return -- cancelled
+
 set theURL to my trimText(theURL)
 if theURL is "" then
 	display notification "No URL entered." with title "YT Transcript — nothing to do"
@@ -32,8 +45,8 @@ try
 	set savedPath to theOutput
 	if theOutput starts with "Saved: " then set savedPath to text 8 thru -1 of theOutput
 
-	set fileName to my lastPathComponent(savedPath)
-	display notification fileName with title "YT Transcript ✓" subtitle "Saved to Desktop"
+	display notification (my lastPathComponent(savedPath)) ¬
+		with title "YT Transcript ✓" subtitle "Saved to Desktop"
 on error errMsg number errNum
 	if errNum is -128 then return -- user cancelled somewhere
 	-- errMsg carries grab.mjs's stderr (e.g. "Error: no captions available...").
@@ -43,7 +56,91 @@ on error errMsg number errNum
 		buttons {"OK"} default button "OK" with icon caution
 end try
 
--- Helpers ---------------------------------------------------------------
+-- Handlers --------------------------------------------------------------
+
+-- Prompt for the URL. Prefer the Cocoa NSAlert (wide, scrollable, multi-line);
+-- if AppleScriptObjC ever fails on some macOS, fall back to a plain display
+-- dialog so the app always prompts. Returns text, or missing value on cancel.
+on promptForURL(prefillText)
+	try
+		return my promptCocoa(prefillText)
+	on error errMsg number errNum
+		if errNum is -128 then return missing value -- user cancelled
+		-- ASObjC unavailable/failed — plain display-dialog fallback.
+		try
+			set dlg to display dialog "Paste a YouTube URL:" default answer prefillText ¬
+				with title "YT Transcript" buttons {"Cancel", "Grab"} default button "Grab" with icon note
+			return text returned of dlg
+		on error number -128
+			return missing value
+		end try
+	end try
+end promptForURL
+
+-- Cocoa NSAlert with a scrollable, multi-line text view so a long pasted URL
+-- wraps and is fully visible. Returns the entered text, or missing value if the
+-- user cancelled.
+on promptCocoa(prefillText)
+	set theAlert to current application's NSAlert's alloc()'s init()
+	theAlert's setMessageText:"YT Transcript"
+	theAlert's setInformativeText:"Paste a YouTube URL, then click Grab. (Long URLs wrap and scroll.)"
+	(theAlert's addButtonWithTitle:"Grab")
+	(theAlert's addButtonWithTitle:"Cancel")
+
+	set theRect to current application's NSMakeRect(0, 0, 460, 72)
+	set scrollView to current application's NSScrollView's alloc()'s initWithFrame:theRect
+	scrollView's setHasVerticalScroller:true
+	scrollView's setHasHorizontalScroller:false
+	scrollView's setBorderType:(current application's NSBezelBorder)
+
+	set textView to current application's NSTextView's alloc()'s initWithFrame:theRect
+	textView's setFont:(current application's NSFont's systemFontOfSize:13)
+	textView's setRichText:false
+	textView's setEditable:true
+	textView's setSelectable:true
+	textView's setHorizontallyResizable:false
+	(textView's textContainer())'s setWidthTracksTextView:true
+	if prefillText is not "" then
+		textView's setString:prefillText
+		-- Select all so the user can immediately overwrite or confirm.
+		textView's setSelectedRange:(current application's NSMakeRange(0, (count of prefillText)))
+	end if
+	scrollView's setDocumentView:textView
+
+	theAlert's setAccessoryView:scrollView
+	-- Focus the text view so a paste (Cmd-V) lands in it immediately. Best-effort:
+	-- the alert window only exists once laid out, and never under bare `osascript`,
+	-- so guard it — the dialog must still open if focusing fails.
+	try
+		theAlert's layout()
+		(theAlert's window()'s makeFirstResponder:textView)
+	end try
+
+	set resp to theAlert's runModal()
+	if resp is (current application's NSAlertFirstButtonReturn) then
+		return (textView's string() as text)
+	end if
+	return missing value
+end promptCocoa
+
+-- Return the clipboard text only when it looks like a YouTube link; else "".
+-- Non-YouTube clipboard content is never returned, shown, or logged.
+on clipboardIfYouTube()
+	set clip to ""
+	try
+		set clip to (the clipboard as text)
+	on error
+		return ""
+	end try
+	if clip is missing value then return ""
+	set c to clip as text
+	set markers to {"youtube.com/watch", "youtu.be/", "youtube.com/shorts/", ¬
+		"youtube.com/live/", "youtube.com/embed/", "youtube-nocookie.com/", "m.youtube.com/watch"}
+	repeat with mk in markers
+		if c contains mk then return my trimText(c)
+	end repeat
+	return ""
+end clipboardIfYouTube
 
 on trimText(t)
 	set t to t as text

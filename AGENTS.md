@@ -69,33 +69,39 @@ Accepted URL forms: `watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`, URLs 
 **Prefer `--stdout` or `--json`. Do NOT write to the user's Desktop (default mode or `--out`) unless the user explicitly asked for a saved file.** Reading into context should leave no file side effects.
 
 ## Failure modes and how to respond
-All errors print `Error: <reason>` to **stderr** and exit **1**. stdout stays empty on failure.
+On failure the exit code is **1**. In normal/`--stdout` mode the error prints as `Error: <reason>` on
+**stderr** (stdout empty). **Under `--json`, a runtime failure prints `{"error":"<reason>"}` to
+stdout** (still exit 1) so you can parse it — check the exit code, then read `.error`.
 
-1. **No captions** — `Error: no captions available for this video`.
-   The video genuinely has no captions/subtitles. Tell the user; do not retry — retrying won't help.
+Before failing, `grab.mjs` automatically retries the video across up to **3 InnerTube clients**
+(Android VR → iOS → TV-embedded); you don't orchestrate retries, it does. The reasons below are what
+you get *after* all clients were tried.
 
-2. **Rate limit** — `Error: Video is not accessible: Sign in to confirm you're not a bot`.
-   Transient, **IP-scoped** anti-bot throttle triggered by many requests in a short window.
-   **Do NOT hammer.** Wait (minutes, not seconds) and retry once later, or tell the user the IP is
-   temporarily throttled. Rapid retries make it worse and prolong the block.
+1. **No captions** — `no captions available for this video`.
+   A client could play the video but it has no captions/subtitles. Tell the user; do not retry.
 
-3. **Video inaccessible** — `Error: Video is not accessible: <reason>` (private, removed, age/region
-   restricted, etc.). Surface the reason to the user; not retryable.
+2. **Rate limit** — `YouTube is temporarily rate-limiting this network ("confirm you're not a bot").
+   This usually clears within an hour — try again later. (Not a bug in this tool.)`
+   Transient, **IP-scoped** anti-bot throttle from too many requests. **Do NOT hammer** — the tool
+   already tried 3 clients. Wait (tens of minutes) and retry once later, or just relay this message
+   to the user. Rapid retries prolong the block.
 
-4. **Usage error** — `Error: <reason>` followed by the help text (e.g. bad flag, missing URL,
-   `--stdout` + `--json` together). Fix the command and rerun.
+3. **Video inaccessible** — `Video is not accessible: <reason>` (private, removed, age/region
+   restricted, etc.). Surface the reason; not retryable.
 
-5. **Stale client (rare, future)** — if grabs start failing with empty feeds or the player rejects
-   the request across many videos, YouTube likely changed its API. Fix: bump `VR_CLIENT.clientVersion`
-   in `grab.mjs` (and the matching version string inside `VR_CLIENT.userAgent`) to a current Android VR
-   / Oculus YouTube app version. See CLAUDE.md for the full rationale.
+4. **Usage error** — `Error: <reason>` followed by the help text (bad flag, missing URL,
+   `--stdout` + `--json` together). These always go to stderr (not JSON). Fix the command and rerun.
+
+5. **Stale clients (rare, future)** — if grabs fail across many videos with empty feeds, YouTube
+   likely changed its API. Fix: bump the `clientVersion` (and matching `userAgent` version) of the
+   entries in the `CLIENTS` array in `grab.mjs`, or append a new working client. See CLAUDE.md.
 
 ## How it works (one paragraph)
-YouTube walls the classic anonymous caption endpoints behind a Proof-of-Origin token. The one client
-whose `/youtubei/v1/player` response still returns working, POT-free caption URLs is the Android VR /
-Oculus client, so `grab.mjs` impersonates it, reads `captionTracks`, picks the best English track
-(manual > auto-generated), fetches the timedtext as json3, and flattens it into paragraphs. No API key,
-no login. This is inherently a bit fragile — see failure mode 5.
+YouTube walls the classic anonymous caption endpoints behind a Proof-of-Origin token. A handful of
+InnerTube clients (Android VR / Oculus, iOS, TV-embedded) still return working, POT-free caption URLs,
+so `grab.mjs` tries them in order (`CLIENTS` array), reads `captionTracks`, picks the best English
+track (manual > auto-generated), fetches the timedtext as json3, and flattens it into paragraphs. No
+API key, no login. Inherently a bit fragile — see failure mode 5.
 
 ## Self-check
 `node url.test.mjs` runs an offline (no-network) check of URL parsing and arg parsing. Expect

@@ -2,9 +2,19 @@
 // Offline self-check for URL parsing + arg parsing (no network).
 // Run: node url.test.mjs
 import assert from "node:assert/strict";
-import { extractVideoId, parseArgs } from "./grab.mjs";
+import { extractVideoId, parseArgs, CLIENTS } from "./grab.mjs";
 
 const ID = "dQw4w9WgXcQ";
+
+// --- fallback client list: ordered, small, well-formed ---
+assert.ok(Array.isArray(CLIENTS), "CLIENTS is an array");
+assert.ok(CLIENTS.length >= 1 && CLIENTS.length <= 3, "CLIENTS length 1..3");
+for (const c of CLIENTS) {
+  assert.equal(typeof c.name, "string", "client has a name");
+  assert.equal(typeof c.client?.clientName, "string", "client.clientName present");
+  assert.equal(typeof c.userAgent, "string", "client.userAgent present");
+}
+assert.equal(CLIENTS[0].name, "ANDROID_VR", "ANDROID_VR is tried first");
 
 // --- URL -> video id ---
 const urlCases = [
@@ -59,5 +69,5 @@ for (const [argv, label] of errCases) {
 }
 
 console.log(
-  `url.test.mjs: ${pass} checks passed (${urlCases.length} URL, 7 arg, ${errCases.length} arg-error)`,
+  `url.test.mjs: ${pass} checks passed (${urlCases.length} URL, 7 arg, ${errCases.length} arg-error, +${CLIENTS.length + 4} client-list)`,
 );

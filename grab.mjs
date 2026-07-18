@@ -24,22 +24,71 @@ import { homedir } from "node:os";
 import { join, isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-// Android VR (Oculus) InnerTube client — the caption URLs it returns still work
-// without a Proof-of-Origin token. Bump clientVersion if YouTube ever rejects it.
-const VR_CLIENT = {
-  clientName: "ANDROID_VR",
-  clientVersion: "1.62.27",
-  deviceMake: "Oculus",
-  deviceModel: "Quest 3",
-  osName: "Android",
-  osVersion: "12L",
-  androidSdkVersion: 32,
-  hl: "en",
-  gl: "US",
-  userAgent:
-    "com.google.android.apps.youtube.vr.oculus/1.62.27 " +
-    "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-};
+// Ordered list of InnerTube clients whose /player response still hands out
+// working, POT-free caption URLs. We try them in order and stop at the first that
+// returns a playable video with captions. The bot-check ("confirm you're not a
+// bot") is partly client-specific, so a second/third client sometimes succeeds
+// when the first is blocked. To add a client later, append one entry here.
+//
+// `client` is the InnerTube context.client object; `userAgent` must match it;
+// `thirdParty` (optional) is merged into context. Bump clientVersion / userAgent
+// versions together if YouTube starts rejecting a client.
+export const CLIENTS = [
+  {
+    name: "ANDROID_VR",
+    client: {
+      clientName: "ANDROID_VR",
+      clientVersion: "1.62.27",
+      deviceMake: "Oculus",
+      deviceModel: "Quest 3",
+      osName: "Android",
+      osVersion: "12L",
+      androidSdkVersion: 32,
+      hl: "en",
+      gl: "US",
+    },
+    userAgent:
+      "com.google.android.apps.youtube.vr.oculus/1.62.27 " +
+      "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
+  },
+  {
+    name: "IOS",
+    client: {
+      clientName: "IOS",
+      clientVersion: "19.45.4",
+      deviceMake: "Apple",
+      deviceModel: "iPhone16,2",
+      osName: "iOS",
+      osVersion: "18.1.0.22B83",
+      hl: "en",
+      gl: "US",
+    },
+    userAgent:
+      "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
+  },
+  {
+    name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+    client: {
+      clientName: "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+      clientVersion: "2.0",
+      hl: "en",
+      gl: "US",
+    },
+    thirdParty: { embedUrl: "https://www.youtube.com" },
+    userAgent:
+      "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 " +
+      "(KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+  },
+];
+
+// Friendly, non-scary message for the transient per-IP anti-bot throttle.
+const RATE_LIMIT_MSG =
+  'YouTube is temporarily rate-limiting this network ("confirm you\'re not a ' +
+  "bot\"). This usually clears within an hour — try again later. (Not a bug in " +
+  "this tool.)";
+
+// Set from --json in main(); routes runtime failures to JSON-on-stdout for agents.
+let outputJsonErrors = false;
 
 const HELP = `yt-transcript — grab a YouTube video's transcript
 
@@ -61,13 +110,26 @@ URL forms accepted: watch?v=, youtu.be/, shorts/, embed/, live/, extra query
 params, and bare 11-char video IDs.
 
 Exit codes: 0 success; 1 usage error, no captions, or video inaccessible.
-Errors print "Error: <reason>" to stderr.`;
+Errors print "Error: <reason>" to stderr — except under --json, where a runtime
+failure prints {"error":"<reason>"} to stdout (still exit 1) so agents can parse it.`;
 
 class UsageError extends Error {}
 
+// Runtime failure: JSON error object on stdout for agents (--json), else a plain
+// "Error: <reason>" on stderr. Exit 1 either way.
 function die(msg, code = 1) {
-  console.error(`Error: ${msg}`);
+  if (outputJsonErrors) {
+    process.stdout.write(JSON.stringify({ error: msg }) + "\n");
+  } else {
+    console.error(`Error: ${msg}`);
+  }
   process.exit(code);
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function isBotBlock(reason) {
+  return /not a bot|sign in to confirm|confirm you.?re not/i.test(reason || "");
 }
 
 // ---- arg parsing (pure, unit-testable) ------------------------------------
@@ -134,21 +196,23 @@ export function extractVideoId(input) {
   return null;
 }
 
-// ---- InnerTube player response (Android VR client) -------------------------
-async function getPlayerResponse(videoId) {
+// ---- InnerTube player response for a given client --------------------------
+async function getPlayerResponse(videoId, clientDef) {
+  const context = { client: clientDef.client };
+  if (clientDef.thirdParty) context.thirdParty = clientDef.thirdParty;
   const res = await fetch(
     "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "User-Agent": VR_CLIENT.userAgent,
+        "User-Agent": clientDef.userAgent,
         "X-Goog-Api-Format-Version": "2",
         "Accept-Language": "en-US,en;q=0.9",
       },
       body: JSON.stringify({
         videoId,
-        context: { client: VR_CLIENT },
+        context,
         contentCheckOk: true,
         racyCheckOk: true,
         playbackContext: {
@@ -157,7 +221,7 @@ async function getPlayerResponse(videoId) {
       }),
     },
   );
-  if (!res.ok) die(`YouTube player request failed (HTTP ${res.status}).`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
 
@@ -178,10 +242,10 @@ function pickTrack(tracks) {
 }
 
 // ---- timedtext fetch + parse ----------------------------------------------
-async function fetchTranscriptText(baseUrl) {
+async function fetchTranscriptText(baseUrl, userAgent) {
   const url = baseUrl.replace(/&fmt=[^&]*/g, "") + "&fmt=json3";
   const res = await fetch(url, {
-    headers: { "User-Agent": VR_CLIENT.userAgent, "Accept-Language": "en" },
+    headers: { "User-Agent": userAgent, "Accept-Language": "en" },
   });
   if (!res.ok) return null;
   const text = await res.text();
@@ -297,42 +361,70 @@ function resolveOutPath(out, defaultBase) {
   return abs; // explicit file path (may overwrite)
 }
 
-// ---- transcript fetch (returns structured data + rendered text) ------------
+// ---- transcript fetch (tries each client in order) -------------------------
 async function grabTranscript(videoId) {
-  const pr = await getPlayerResponse(videoId);
+  let sawPlayableNoTracks = false; // a client played the video but had no captions
+  let sawEmptyFeed = false; // captions existed but the feed came back empty
+  let botBlocked = false; // a client hit the "not a bot" wall
+  let lastReason = null; // last non-bot inaccessibility reason
 
-  const status = pr?.playabilityStatus?.status;
-  if (status && status !== "OK") {
-    const reason =
-      pr?.playabilityStatus?.reason ||
-      pr?.playabilityStatus?.errorScreen?.playerErrorMessageRenderer?.reason
-        ?.simpleText ||
-      status;
-    die(`Video is not accessible: ${reason}`);
+  for (let i = 0; i < CLIENTS.length; i++) {
+    if (i > 0) await sleep(500); // brief spacing; keeps ≤3 player requests/grab
+
+    const clientDef = CLIENTS[i];
+    let pr;
+    try {
+      pr = await getPlayerResponse(videoId, clientDef);
+    } catch (e) {
+      lastReason = e.message || String(e);
+      continue; // network/HTTP hiccup on this client — try the next
+    }
+
+    const status = pr?.playabilityStatus?.status;
+    if (status && status !== "OK") {
+      const reason =
+        pr?.playabilityStatus?.reason ||
+        pr?.playabilityStatus?.errorScreen?.playerErrorMessageRenderer?.reason
+          ?.simpleText ||
+        status;
+      if (isBotBlock(reason)) botBlocked = true;
+      else lastReason = reason;
+      continue;
+    }
+
+    const tracks =
+      pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+    if (tracks.length === 0) {
+      sawPlayableNoTracks = true; // genuinely no captions from a playable client
+      continue;
+    }
+
+    const picked = pickTrack(tracks);
+    const raw = await fetchTranscriptText(picked.track.baseUrl, clientDef.userAgent);
+    if (!raw) {
+      sawEmptyFeed = true; // likely POT/rate-limit on the feed — try next client
+      continue;
+    }
+
+    // Success.
+    const details = pr?.videoDetails || {};
+    const now = new Date();
+    return {
+      videoId,
+      title: details.title || "youtube video",
+      channel: details.author || "Unknown channel",
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      captionKind: picked.kind,
+      grabbedAt: now.toISOString(),
+      grabbedAtHuman: now.toString(),
+      transcript: cleanTranscript(raw),
+    };
   }
 
-  const tracks =
-    pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-  if (tracks.length === 0) die("no captions available for this video");
-
-  const picked = pickTrack(tracks);
-  const raw = await fetchTranscriptText(picked.track.baseUrl);
-  if (!raw) {
-    die("no captions available for this video (caption feed was empty)");
-  }
-
-  const details = pr?.videoDetails || {};
-  const now = new Date();
-  return {
-    videoId,
-    title: details.title || "youtube video",
-    channel: details.author || "Unknown channel",
-    url: `https://www.youtube.com/watch?v=${videoId}`,
-    captionKind: picked.kind,
-    grabbedAt: now.toISOString(),
-    grabbedAtHuman: now.toString(),
-    transcript: cleanTranscript(raw),
-  };
+  // All clients exhausted — report the most informative cause.
+  if (sawPlayableNoTracks) die("no captions available for this video");
+  if (botBlocked || sawEmptyFeed) die(RATE_LIMIT_MSG);
+  die(`Video is not accessible: ${lastReason || "unknown reason"}`);
 }
 
 function renderText(d) {
@@ -364,6 +456,9 @@ async function main() {
     console.log(HELP);
     process.exit(0);
   }
+
+  // From here on, runtime failures should honor --json (JSON error on stdout).
+  outputJsonErrors = opts.json;
 
   const videoId = extractVideoId(opts.url);
   if (!videoId) die(`Could not parse a YouTube video id from: ${opts.url}`);
