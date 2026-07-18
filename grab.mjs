@@ -26,19 +26,40 @@ import { pathToFileURL } from "node:url";
 
 // Ordered list of InnerTube clients whose /player response still hands out
 // working, POT-free caption URLs. We try them in order and stop at the first that
-// returns a playable video with captions. The bot-check ("confirm you're not a
-// bot") is partly client-specific, so a second/third client sometimes succeeds
-// when the first is blocked. To add a client later, append one entry here.
+// returns a playable video with captions. YouTube's "confirm you're not a bot"
+// check is applied *per client and per video*, so a second client often succeeds
+// when the first is blocked — e.g. IOS grabs videos that bot-check ANDROID_VR.
+// These two are the only anonymous, POT-free clients that currently pass the
+// end-to-end check (player OK + non-empty timedtext); the web/mweb/tv/android
+// clients are POT-walled or 400 as of this writing. To add a client, append one
+// entry (research yt-dlp's INNERTUBE_CLIENTS for a current, working config).
 //
-// `client` is the InnerTube context.client object; `userAgent` must match it;
-// `thirdParty` (optional) is merged into context. Bump clientVersion / userAgent
-// versions together if YouTube starts rejecting a client.
+// `client` is the InnerTube context.client object; `userAgent` must match its
+// clientVersion; `thirdParty` (optional) is merged into context; `apiFormatV2`
+// sends the "X-Goog-Api-Format-Version: 2" header (IOS must NOT — it 400s with
+// it). Bump clientVersion + the version inside userAgent together when refreshing.
 export const CLIENTS = [
+  {
+    name: "IOS",
+    client: {
+      clientName: "IOS",
+      clientVersion: "20.10.4",
+      deviceMake: "Apple",
+      deviceModel: "iPhone16,2",
+      osName: "iPhone",
+      osVersion: "18.3.2.22D82",
+      hl: "en",
+      gl: "US",
+    },
+    userAgent:
+      "com.google.ios.youtube/20.10.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)",
+    apiFormatV2: false,
+  },
   {
     name: "ANDROID_VR",
     client: {
       clientName: "ANDROID_VR",
-      clientVersion: "1.62.27",
+      clientVersion: "1.61.48",
       deviceMake: "Oculus",
       deviceModel: "Quest 3",
       osName: "Android",
@@ -48,44 +69,20 @@ export const CLIENTS = [
       gl: "US",
     },
     userAgent:
-      "com.google.android.apps.youtube.vr.oculus/1.62.27 " +
+      "com.google.android.apps.youtube.vr.oculus/1.61.48 " +
       "(Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip",
-  },
-  {
-    name: "IOS",
-    client: {
-      clientName: "IOS",
-      clientVersion: "19.45.4",
-      deviceMake: "Apple",
-      deviceModel: "iPhone16,2",
-      osName: "iOS",
-      osVersion: "18.1.0.22B83",
-      hl: "en",
-      gl: "US",
-    },
-    userAgent:
-      "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)",
-  },
-  {
-    name: "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-    client: {
-      clientName: "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-      clientVersion: "2.0",
-      hl: "en",
-      gl: "US",
-    },
-    thirdParty: { embedUrl: "https://www.youtube.com" },
-    userAgent:
-      "Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 " +
-      "(KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+    apiFormatV2: true,
   },
 ];
 
-// Friendly, non-scary message for the transient per-IP anti-bot throttle.
-const RATE_LIMIT_MSG =
-  'YouTube is temporarily rate-limiting this network ("confirm you\'re not a ' +
-  "bot\"). This usually clears within an hour — try again later. (Not a bug in " +
-  "this tool.)";
+// Honest message for a bot/verification check. It can be transient network-wide
+// throttling OR a check YouTube applies to one specific video — the caller can
+// tell which by trying a different video.
+const VERIFICATION_MSG =
+  "YouTube demanded a sign-in/verification check for this request. This can be " +
+  "temporary network rate-limiting (clears within ~an hour) or a check YouTube " +
+  "applies to this specific video — try another video to tell which. (Not a bug " +
+  "in this tool.)";
 
 const AGE_RESTRICTED_MSG =
   "This video is age-restricted; YouTube requires sign-in for it, which this " +
@@ -219,16 +216,18 @@ export function extractVideoId(input) {
 async function getPlayerResponse(videoId, clientDef) {
   const context = { client: clientDef.client };
   if (clientDef.thirdParty) context.thirdParty = clientDef.thirdParty;
+  const headers = {
+    "Content-Type": "application/json",
+    "User-Agent": clientDef.userAgent,
+    "Accept-Language": "en-US,en;q=0.9",
+  };
+  // IOS 400s if this header is present; ANDROID_VR expects it.
+  if (clientDef.apiFormatV2) headers["X-Goog-Api-Format-Version"] = "2";
   const res = await fetch(
     "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "User-Agent": clientDef.userAgent,
-        "X-Goog-Api-Format-Version": "2",
-        "Accept-Language": "en-US,en;q=0.9",
-      },
+      headers,
       body: JSON.stringify({
         videoId,
         context,
@@ -449,7 +448,7 @@ async function grabTranscript(videoId) {
   // transient throttle; anything else is surfaced verbatim.
   if (sawPlayableNoTracks) die("no captions available for this video");
   if (ageRestricted) die(AGE_RESTRICTED_MSG);
-  if (botBlocked || sawEmptyFeed) die(RATE_LIMIT_MSG);
+  if (botBlocked || sawEmptyFeed) die(VERIFICATION_MSG);
   die(`Video is not accessible: ${lastReason || "unknown reason"}`);
 }
 

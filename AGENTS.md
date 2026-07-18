@@ -74,18 +74,20 @@ On failure the exit code is **1**. In normal/`--stdout` mode the error prints as
 **stderr** (stdout empty). **Under `--json`, a runtime failure prints `{"error":"<reason>"}` to
 stdout** (still exit 1) so you can parse it — check the exit code, then read `.error`.
 
-Before failing, `grab.mjs` automatically retries the video across up to **3 InnerTube clients**
-(Android VR → iOS → TV-embedded); you don't orchestrate retries, it does. The reasons below are what
-you get *after* all clients were tried.
+Before failing, `grab.mjs` automatically retries the video across the **InnerTube clients** in its
+`CLIENTS` roster (currently IOS → Android VR); you don't orchestrate retries, it does. The reasons
+below are what you get *after* all clients were tried.
 
 1. **No captions** — `no captions available for this video`.
    A client could play the video but it has no captions/subtitles. Tell the user; do not retry.
 
-2. **Rate limit** — `YouTube is temporarily rate-limiting this network ("confirm you're not a bot").
-   This usually clears within an hour — try again later. (Not a bug in this tool.)`
-   Transient, **IP-scoped** anti-bot throttle from too many requests. **Do NOT hammer** — the tool
-   already tried 3 clients. Wait (tens of minutes) and retry once later, or just relay this message
-   to the user. Rapid retries prolong the block.
+2. **Verification/bot check** — `YouTube demanded a sign-in/verification check for this request. This
+   can be temporary network rate-limiting (clears within ~an hour) or a check YouTube applies to this
+   specific video — try another video to tell which. (Not a bug in this tool.)`
+   YouTube's "confirm you're not a bot" wall. It's applied per-client *and* per-video, so it's either a
+   transient IP-wide throttle or a check on that one video. **Do NOT hammer** — the tool already tried
+   every client. To disambiguate, try a *different* video: if that works, the first video is the
+   blocked one; if it also fails, the network is throttled — wait tens of minutes.
 
 3. **Age-restricted** — `This video is age-restricted; YouTube requires sign-in for it, which this
    tool doesn't do.` Distinct from the rate-limit case (both once shared "Sign in to confirm…"
@@ -102,12 +104,13 @@ you get *after* all clients were tried.
    entries in the `CLIENTS` array in `grab.mjs`, or append a new working client. See CLAUDE.md.
 
 ## How it works (one paragraph)
-YouTube walls the classic anonymous caption endpoints behind a Proof-of-Origin token. A handful of
-InnerTube clients (Android VR / Oculus, iOS, TV-embedded) still return working, POT-free caption URLs,
-so `grab.mjs` tries them in order (`CLIENTS` array), reads `captionTracks`, picks the best English
-track (manual > auto-generated), fetches the timedtext as json3, and flattens it into paragraphs. No
-API key, no login. Inherently a bit fragile — see failure mode 5.
+YouTube walls the classic anonymous caption endpoints behind a Proof-of-Origin token. Two InnerTube
+clients — IOS and Android VR / Oculus — still return working, POT-free caption URLs, so `grab.mjs`
+tries them in order (`CLIENTS` array; IOS first because it bypasses per-video bot-checks that hit
+Android VR), reads `captionTracks`, picks the best English track (manual > auto-generated), fetches the
+timedtext as json3, and flattens it into paragraphs. No API key, no login. Inherently a bit fragile —
+see failure mode 6.
 
 ## Self-check
-`node url.test.mjs` runs an offline (no-network) check of URL parsing and arg parsing. Expect
-`url.test.mjs: 25 checks passed`.
+`node url.test.mjs` runs an offline (no-network) check of URL/arg parsing, the client roster, and the
+playability classifier. Expect `url.test.mjs: 27 checks passed`.

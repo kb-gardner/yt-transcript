@@ -60,28 +60,35 @@ As of 2026 YouTube walls the classic anonymous caption paths:
 both behind a Proof-of-Origin (POT) token — even with a freshly generated POT
 (via `bgutils-js` + BotGuard) the caption/transcript endpoints stayed blocked.
 
-The one client whose `/youtubei/v1/player` response still returns **working,
-POT-free caption URLs** is the **Android VR / Oculus client** (`clientName:
-ANDROID_VR`). So `grab.mjs` POSTs to `/player` impersonating that client, reads
-`videoDetails` + `captionTracks`, picks the best English track (manual > auto),
-fetches the track's timedtext as `json3`, and flattens it. This is exactly the
-trick `yt-dlp` uses. No API key, no login, no dependencies.
+Two InnerTube clients still return **working, POT-free caption URLs**: **IOS** and
+the **Android VR / Oculus client** (`clientName: ANDROID_VR`). `grab.mjs` tries
+them in order (the `CLIENTS` array — **IOS first**, because the "confirm you're not
+a bot" check is applied *per client and per video*, and IOS grabs videos that
+bot-check ANDROID_VR; e.g. `4IyJm1i__ag`). For the first client that returns OK +
+captions it reads `videoDetails` + `captionTracks`, picks the best English track
+(manual > auto), fetches the timedtext as `json3`, and flattens it. This is the
+trick `yt-dlp` uses. Note: IOS must NOT send the `X-Goog-Api-Format-Version: 2`
+header (it 400s with it); ANDROID_VR needs it — see the per-client `apiFormatV2`
+flag. No API key, no login, no dependencies.
 
 Track preference: manual English → auto-generated English → any manual → first
 available. No captions at all → clean error "no captions available for this video".
 
 ## Gotchas / fragility
-- **This depends on an undocumented YouTube client quirk.** If grabs suddenly
-  fail (empty feed, or player rejects the client), YouTube likely changed
-  something. First thing to try: bump `VR_CLIENT.clientVersion` in `grab.mjs`
-  (and the matching version in `userAgent`) to a current Android VR app version.
-  If that client dies entirely, the fallback is to shell out to `yt-dlp`
-  (`--skip-download --write-auto-sub --write-sub --sub-format json3`), which
-  tracks these changes upstream — but it isn't installed and needs a separate
-  install (standalone binary, not Homebrew).
-- **Rate limiting:** hammering the `/player` endpoint fast (many requests in a
-  row) trips a transient per-IP "Sign in to confirm you're not a bot" response.
-  Normal occasional use is fine; it clears itself after a short wait.
+- **This depends on undocumented YouTube client quirks.** If grabs suddenly fail
+  across many videos (empty feed, or the player rejects the clients), YouTube
+  likely changed something. First thing to try: bump the `clientVersion` (and the
+  matching version inside `userAgent`) of the `CLIENTS` entries in `grab.mjs` to
+  current IOS / Android-VR app versions, or research yt-dlp's `INNERTUBE_CLIENTS`
+  for a fresh working client and append it. If all clients die, the fallback is to
+  shell out to `yt-dlp` (`--skip-download --write-auto-sub --write-sub
+  --sub-format json3`), which tracks these changes upstream — but it isn't
+  installed and needs a separate install (standalone binary, not Homebrew).
+- **Bot / verification check:** YouTube's "confirm you're not a bot" wall is applied
+  **per client and per video** — it can be a transient per-IP throttle (hammering
+  the endpoint) OR a check on one specific video. The two-client roster handles the
+  per-video case (IOS bypasses videos that bot-check ANDROID_VR); if both clients
+  hit it, the user sees the honest "try another video to tell which" message.
 - The `.app` hardcodes absolute paths (`/opt/homebrew/bin/node` and the repo
   path to `grab.mjs`). If node or the project moves, edit the two `set` lines at
   the top of `YT Transcript.applescript`, then rerun `./build-app.sh`. The `.app`

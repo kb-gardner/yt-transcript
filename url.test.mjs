@@ -8,13 +8,14 @@ const ID = "dQw4w9WgXcQ";
 
 // --- fallback client list: ordered, small, well-formed ---
 assert.ok(Array.isArray(CLIENTS), "CLIENTS is an array");
-assert.ok(CLIENTS.length >= 1 && CLIENTS.length <= 3, "CLIENTS length 1..3");
+assert.ok(CLIENTS.length >= 2 && CLIENTS.length <= 3, "CLIENTS length 2..3");
 for (const c of CLIENTS) {
   assert.equal(typeof c.name, "string", "client has a name");
   assert.equal(typeof c.client?.clientName, "string", "client.clientName present");
   assert.equal(typeof c.userAgent, "string", "client.userAgent present");
 }
-assert.equal(CLIENTS[0].name, "ANDROID_VR", "ANDROID_VR is tried first");
+assert.equal(CLIENTS[0].name, "IOS", "IOS is tried first (bypasses per-video bot-check)");
+assert.ok(CLIENTS.some((c) => c.name === "ANDROID_VR"), "ANDROID_VR is in the roster");
 
 // --- playability classifier: bot vs age vs other (must not conflate) ---
 const classifyCases = [
