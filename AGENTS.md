@@ -17,7 +17,8 @@ curl -fsSL https://raw.githubusercontent.com/kb-gardner/yt-transcript/main/insta
 ```
 Installs to `~/.yt-transcript`, wrapper at `~/.local/bin/yt-transcript`. Idempotent.
 After install you can call `yt-transcript …` (if `~/.local/bin` is on PATH) or
-`node ~/.yt-transcript/grab.mjs …` directly.
+`node ~/.yt-transcript/grab.mjs …` directly. Update in place with `yt-transcript --update`
+(re-runs the installer); from a repo checkout just `git pull`.
 
 **As an agent working in a repo checkout** (no global install needed):
 ```bash

@@ -42,6 +42,7 @@ for (const [input, expected] of urlCases) {
 const U = "https://youtu.be/dQw4w9WgXcQ";
 assert.deepEqual(parseArgs([U]), {
   help: false,
+  update: false,
   stdout: false,
   json: false,
   out: null,
@@ -53,7 +54,9 @@ assert.equal(parseArgs(["--out", "/tmp/x.txt", U]).out, "/tmp/x.txt");
 assert.equal(parseArgs([`--out=/tmp/y.txt`, U]).out, "/tmp/y.txt");
 assert.equal(parseArgs([U, "--json"]).json, true); // order independent
 assert.equal(parseArgs(["--help"]).help, true); // help without url ok
-pass += 7;
+assert.equal(parseArgs(["--update"]).update, true); // update without url ok
+assert.equal(parseArgs(["update"]).update, true); // bare 'update' alias
+pass += 9;
 
 // --- arg parsing errors ---
 const errCases = [
@@ -69,5 +72,5 @@ for (const [argv, label] of errCases) {
 }
 
 console.log(
-  `url.test.mjs: ${pass} checks passed (${urlCases.length} URL, 7 arg, ${errCases.length} arg-error, +${CLIENTS.length + 4} client-list)`,
+  `url.test.mjs: ${pass} checks passed (${urlCases.length} URL, 9 arg, ${errCases.length} arg-error, +${CLIENTS.length + 4} client-list)`,
 );

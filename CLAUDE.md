@@ -16,6 +16,9 @@ and on macOS osacompiles the Spotlight app into `~/Applications` with the instal
 machine's resolved node + script paths (parameterized from the `.applescript`).
 Idempotent, no sudo, never auto-installs Node. This is Kyle's own dev checkout at
 `~/dev/personal/yt-transcript`; the installer is for clean end-user machines.
+Installed users self-update with `yt-transcript --update` (the generated wrapper
+intercepts it and re-runs the installer); `grab.mjs --update` just prints how to
+update a checkout. Existing installs need one manual re-install before `--update` exists.
 
 ## What it is
 - **`grab.mjs`** — the core. Plain Node ESM, **zero npm dependencies** (uses the

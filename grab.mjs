@@ -104,6 +104,9 @@ Options:
                   created inside it; otherwise <path> is used as the file itself.
                   Combine with --stdout/--json to also print (the "Saved" line then
                   goes to stderr, keeping stdout clean for machines).
+  --update        Update in place. Via the installed 'yt-transcript' command this
+                  re-runs the installer; run against grab.mjs directly it prints
+                  how to update a repo checkout.
   -h, --help      Show this help and exit.
 
 URL forms accepted: watch?v=, youtu.be/, shorts/, embed/, live/, extra query
@@ -133,12 +136,13 @@ function isBotBlock(reason) {
 }
 
 // ---- arg parsing (pure, unit-testable) ------------------------------------
-// Returns { help, stdout, json, out, url } or throws UsageError.
+// Returns { help, update, stdout, json, out, url } or throws UsageError.
 export function parseArgs(argv) {
-  const opts = { help: false, stdout: false, json: false, out: null, url: null };
+  const opts = { help: false, update: false, stdout: false, json: false, out: null, url: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") opts.help = true;
+    else if (a === "--update" || a === "update") opts.update = true;
     else if (a === "--stdout") opts.stdout = true;
     else if (a === "--json") opts.json = true;
     else if (a === "--out") {
@@ -159,7 +163,9 @@ export function parseArgs(argv) {
       throw new UsageError(`unexpected extra argument: ${a}`);
     }
   }
-  if (!opts.help && !opts.url) throw new UsageError("no YouTube URL provided");
+  if (!opts.help && !opts.update && !opts.url) {
+    throw new UsageError("no YouTube URL provided");
+  }
   if (opts.stdout && opts.json) {
     throw new UsageError("--stdout and --json cannot be combined");
   }
@@ -454,6 +460,19 @@ async function main() {
 
   if (opts.help) {
     console.log(HELP);
+    process.exit(0);
+  }
+
+  if (opts.update) {
+    // The self-update flow lives in the installed `yt-transcript` wrapper. When
+    // grab.mjs is invoked directly (repo checkout / agents), just say how.
+    console.log(
+      "yt-transcript --update updates the copy installed by the one-line installer.\n" +
+        "You're running grab.mjs directly, so update this checkout with:\n" +
+        "  git pull            # in this repo directory\n" +
+        "or re-run the installer:\n" +
+        "  curl -fsSL https://raw.githubusercontent.com/kb-gardner/yt-transcript/main/install.sh | bash",
+    );
     process.exit(0);
   }
 

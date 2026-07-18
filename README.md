@@ -26,6 +26,14 @@ just use the CLI.
 **Requirements:** Node 18+ (uses the built-in `fetch`; tested on Node 26). macOS or
 Linux. No API key, no login.
 
+## Updating
+```bash
+yt-transcript --update
+```
+This re-runs the installer to pull the latest version in place. Re-running the
+install one-liner does exactly the same thing. (If you installed before `--update`
+existed, run the install one-liner once — after that, `--update` works.)
+
 ## Uninstall
 ```bash
 rm -rf ~/.yt-transcript ~/.local/bin/yt-transcript "$HOME/Applications/YT Transcript.app"
